@@ -61,6 +61,7 @@ int my_rwlock_wrlock(my_rwlock_t* lock) {
 
 int my_rwlock_unlock(my_rwlock_t* lock) {
     pthread_mutex_lock(&lock->mutex);
+    
     if(lock->writer_active) {
         lock->writer_active = 0;
     } else {
