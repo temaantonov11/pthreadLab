@@ -1,7 +1,6 @@
 import csv
 import os
 import re
-import statistics
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
@@ -10,7 +9,6 @@ from enum import Enum
 class Rwlock(Enum):
     STDLIB = "stdrwl"
     LAB = "labrwl"
-
 
 
 BUILD_CMDS = {
@@ -23,21 +21,24 @@ BUILD_CMDS = {
 
 @dataclass(frozen=True)
 class Workload:
-    name: str
     search_pct: float
-    insert_pct: float 
+    insert_pct: float
+
+    @property
+    def delete_pct(self) -> float:
+        return round(1.0 - self.search_pct - self.insert_pct, 6)
 
 
 WORKLOADS = [
-    Workload("read99.9", 0.999, 0.0005),
-    Workload("mixed80", 0.8, 0.1),
-    Workload("write50", 0.5, 0.25),
+    Workload(0.999, 0.0005),
+    Workload(0.8, 0.1),
+    Workload(0.5, 0.25),
 ]
 
 THREADS = [1, 2, 4, 8, 16, 24]
 LIST_SIZE = 1000
 TOTAL_OPS = 80000
-REPEATS = 7
+REPEATS = 10
 
 
 def build(impl: Rwlock) -> str:
@@ -74,27 +75,32 @@ def main():
         for wl in WORKLOADS:
             for threads in THREADS:
                 for impl, exe in exes.items():
-                    print(f"{wl}: {threads}: {impl}")
+                    print(f"{impl.name}: threads={threads}, search={wl.search_pct}, "
+                          f"insert={wl.insert_pct}, delete={wl.delete_pct}")
                     times = [
                         get_time(run(exe, threads, LIST_SIZE, TOTAL_OPS,
-                                        wl.search_pct, wl.insert_pct))
+                                     wl.search_pct, wl.insert_pct))
                         for _ in range(REPEATS)
                     ]
                     avg = sum(times) / len(times)
                     min_time = min(times)
                     rows.append({
-                        "impl": impl.name, "workload": wl.name,
-                        "size": LIST_SIZE, "threads": threads,
-                        "min": min_time, "average": avg,
+                        "impl": impl.name,
+                        "list_size": LIST_SIZE,
+                        "total_ops": TOTAL_OPS,
+                        "search_pct": wl.search_pct,
+                        "insert_pct": wl.insert_pct,
+                        "delete_pct": wl.delete_pct,
+                        "threads": threads,
+                        "min": min_time,
+                        "average": avg,
                     })
-                    print(f"{impl.name:6} size={LIST_SIZE:<6} {wl.name:9} "
-                            f"t={threads:<2} median={avg:.4f}s min={min_time:.4f}")
+                    print(f"  avg={avg:.4f}s min={min_time:.4f}s")
 
         with open("benchs.csv", "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=rows[0].keys())
             w.writeheader()
             w.writerows(rows)
-        
 
     finally:
         for exe in exes.values():
